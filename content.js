@@ -122,6 +122,8 @@
     const key = norm(text).slice(0, 20);
     const inp = queryFirst(c.input);
     if (!inp) return { ok: false, err: '没找到输入框' };
+    const lim = limitNow();   // 限制弹窗已经在了，发了也白发
+    if (lim) return { ok: false, limited: lim, err: '被限制：' + lim };
     if (!norm(textOf(inp.el)).includes(key)) return { ok: false, err: '输入框里没有要发的字（填字那一步失败了）' };
     const btn = await waitFor(() => queryFirst(c.send, enabled), 3000);
     if (btn) btn.el.click();
@@ -155,8 +157,11 @@
     const c = cfg();
     const t = c.site && c.site.think;
     if (!t) return { ok: false, unsupported: true, err: '这个站没做自动切换，请在栏里手动选' };
+    const lim = limitNow();   // 限制弹窗挡着，点不了菜单，不用等
+    if (lim) return { ok: false, limited: lim, err: '被限制：' + lim };
     if (t.type === 'toggle') {
-      const el = [...document.querySelectorAll(t.sel)].find(e => visible(e) && firstLine(e) === t.text);
+      // 栏刚加载完时输入区可能还没渲染出来，最多等 8 秒
+      const el = await waitFor(() => [...document.querySelectorAll(t.sel)].find(e => visible(e) && firstLine(e) === t.text), 8000);
       if (!el) return { ok: false, err: '没找到「' + t.text + '」开关' };
       const cur = el.getAttribute(t.onAttr) === 'true';
       if (cur !== on) { realClick(el); await sleep(400); }
@@ -164,7 +169,7 @@
     }
     if (t.type === 'menu') {
       const want = on ? t.on : t.off;
-      const trig = [...document.querySelectorAll(t.trigger)].find(e => visible(e) && (!t.triggerText || [].concat(t.triggerText).some(x => firstLine(e) === x || (e.getAttribute('aria-label') || '') === x || (typeof t.triggerText === 'string' && (e.innerText || '').includes(x)))) && (e.innerText || '').length < 30);
+      const trig = await waitFor(() => [...document.querySelectorAll(t.trigger)].find(e => visible(e) && (!t.triggerText || [].concat(t.triggerText).some(x => firstLine(e) === x || (e.getAttribute('aria-label') || '') === x || (typeof t.triggerText === 'string' && (e.innerText || '').includes(x)))) && (e.innerText || '').length < 30), 8000);
       if (!trig) return { ok: false, err: '没找到模型/模式菜单' };
       realClick(trig);
       const item = await waitFor(() => [...document.querySelectorAll(t.item)].find(e => visible(e) && firstLine(e) === want), 2000);
@@ -325,14 +330,33 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     return limitHit && limitHit.t >= sentAt ? limitHit.text : '';
   }
 
+  // 思考过程：class 里带 think / reason / thought 的块（Kimi 是 .thinking-container），站点也可以在 sites.js 里给 thinkSel。
+  // 只取标记那条消息后面的、最外层的，返回各块的文字
+  const THINK_SEL = '[class*="think" i],[class*="reason" i],[class*="thought" i]';
+  function thinkBlocks(after, inpEl, extra) {
+    const hits = [...document.querySelectorAll(extra ? THINK_SEL + ',' + extra : THINK_SEL)].filter(e =>
+      visible(e) && !e.closest('nav,aside,textarea,button') && !(inpEl && (e.contains(inpEl) || inpEl.closest('form,footer') && inpEl.closest('form,footer').contains(e))) &&
+      (after.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING) && !e.contains(after));
+    return hits.filter(e => !hits.some(o => o !== e && o.contains(e))).filter(e => (e.innerText || '').trim().length > 15);
+  }
+
   function reply(marker, prompt) {
     const c = cfg();
     const inp = queryFirst(c.input);
     let best = null;
-    for (const el of markerEls(marker)) {
-      if (!visible(el) || el.closest('nav,aside,textarea') || (inp && inp.el.contains(el))) continue;
-      const r = stripPrompt(textAfter(el, marker, inp && inp.el), prompt || marker);
-      if (!best || r.matched > best.matched) best = r;
+    const cands = markerEls(marker).filter(el => visible(el) && !el.closest('nav,aside,textarea') && !(inp && inp.el.contains(el)));
+    // 思考过程：先记下文字，再临时藏起来读回答（innerText 不含 display:none 的元素），读完马上恢复
+    const thinkEls = cands.length ? thinkBlocks(cands[0], inp && inp.el, c.site && c.site.thinkSel) : [];
+    const think = cleanReply(thinkEls.map(e => e.innerText || '').join('\n\n'));
+    const saved = thinkEls.map(e => [e, e.style.getPropertyValue('display'), e.style.getPropertyPriority('display')]);
+    thinkEls.forEach(e => e.style.setProperty('display', 'none', 'important'));
+    try {
+      for (const el of cands) {
+        const r = stripPrompt(textAfter(el, marker, inp && inp.el), prompt || marker);
+        if (!best || r.matched > best.matched) best = r;
+      }
+    } finally {
+      for (const [e, v, pr] of saved) v ? e.style.setProperty('display', v, pr) : e.style.removeProperty('display');
     }
     if (!best) return { ok: true, found: false, busy: busy(), limited: limitNow() };
     let rest = best.rest.replace(/^\s*(…|\.\.\.)?\s*(展开|显示更多|Show more)?/, '');
@@ -343,7 +367,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     const text = cleanReply(rest);
     // 回答本身就是一句限制提示（有的站把它显示成 AI 的回复）
     const limited = limitNow() || (text.length < 80 && LIMIT_RE.test(text) ? text.split('\n')[0].slice(0, 60) : '');
-    return { ok: true, found: true, text: limited ? '' : text, busy: busy(), limited, href: location.href };
+    return { ok: true, found: true, text: limited ? '' : text, think: limited ? '' : think, busy: busy(), limited, href: location.href };
   }
 
   async function handle(msg) {

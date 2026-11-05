@@ -102,5 +102,7 @@ body.scene .pane .remove, body.scene .pane .on { display: none; }
 .round .toggle-all[hidden] { display: none; }
 .round details { border-top: 1px solid var(--line); padding: 4px 0; }
 .round summary { cursor: pointer; }
+.round details.think { margin: 4px 0 6px 14px; padding: 2px 8px; border-left: 3px solid var(--line); color: var(--muted); font-size: 12px; }
+.round details.think > summary { font-size: 12px; }
 .txt { white-space: pre-wrap; padding: 6px 0 2px; line-height: 1.6; }
 .final { background: var(--panel); border: 2px solid #eab308; border-radius: 8px; padding: 10px 14px; }

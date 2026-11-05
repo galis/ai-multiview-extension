@@ -22,7 +22,7 @@ const STABLE_MS = 8000;      // 文字这么久不变、且没有「停止」按
 const DEFAULT_TIMEOUT_MIN = 5;   // 每轮默认最多等 5 分钟，超时的栏不再等
 const timeoutMin = () => Math.min(60, Math.max(1, Number(state.timeoutMin) || DEFAULT_TIMEOUT_MIN));
 
-let run = null;              // 进行中的场景：{ abort, skip, timedOut: Map(id -> 原因) }
+let run = null;              // 进行中的场景：{ abort, skip, timedOut: Map(id -> 原因), think: Map(id -> 思考过程) }
 let openId = null;           // 当前弹出的栏
 const lastStatus = new Map();
 
@@ -119,7 +119,7 @@ function addRound(title) {
   b.className = 'toggle-all';
   b.hidden = true;
   b.onclick = () => {
-    const ds = [...r.querySelectorAll('details')];
+    const ds = [...r.querySelectorAll(':scope > details')];
     const open = !ds.every(d => d.open);
     ds.forEach(d => { d.open = open; });
     syncToggle(r);
@@ -131,20 +131,34 @@ function addRound(title) {
 }
 function syncToggle(round) {
   const b = round.querySelector('.toggle-all');
-  const ds = [...round.querySelectorAll('details')];
+  const ds = [...round.querySelectorAll(':scope > details')];
   b.hidden = ds.length < 2;
   b.textContent = ds.length && ds.every(d => d.open) ? '全部收起' : '全部展开';
 }
-function addAnswer(round, name, text, open = false, late = '') {
+// 回答默认展开；思考过程单独折叠在回答上面
+function addAnswer(round, name, text, late = '', think = '') {
   const d = document.createElement('details');
-  d.open = open || location.hash.includes('autotest');   // 自动测试时全部展开，方便截图核对
+  d.open = true;
   const s = document.createElement('summary');
   s.textContent = `${name}（${late ? late + '，' : ''}${text ? text.length + ' 字' : '没拿到回答'}）`;
   if (late) s.classList.add('late');
   const pre = document.createElement('div');
   pre.className = 'txt';
   pre.textContent = text || '';
-  d.append(s, pre);
+  d.append(s);
+  if (think) {
+    const th = document.createElement('details');
+    th.className = 'think';
+    th.open = location.hash.includes('autotest');   // 自动测试时展开，方便截图核对
+    const ts = document.createElement('summary');
+    ts.textContent = `思考过程（${think.length} 字）`;
+    const tt = document.createElement('div');
+    tt.className = 'txt';
+    tt.textContent = think;
+    th.append(ts, tt);
+    d.append(th);
+  }
+  d.append(pre);
   d.ontoggle = () => syncToggle(round);
   round.appendChild(d);
   syncToggle(round);
@@ -184,6 +198,7 @@ async function waitReplies(items, marker) {
       const s = st.get(it.p.id);
       const r = await ask(it.p.id, { cmd: 'reply', marker, prompt: it.text }, true);
       const now = Date.now();
+      if (r && r.ok && r.found && r.think && r.think !== s.think) { s.think = r.think; s.changed = now; }
       if (r && r.ok && r.found && r.text && r.text !== s.text) { s.text = r.text; s.changed = now; s.seen = true; }
       if (r && r.ok && r.found) s.seen = true;
       const busy = r && r.busy;
@@ -211,6 +226,7 @@ async function waitReplies(items, marker) {
     if (run.skip) break;
     await sleep(2500);
   }
+  for (const [id, s] of st) if (s.think) run.think.set(id, s.think);
   return new Map([...st].map(([id, s]) => [id, s.text]));
 }
 
@@ -219,7 +235,7 @@ async function roundAsk(title, items, marker) {
   const round = addRound(title);
   const sent = await sendEach(items);
   const got = run.abort ? new Map() : await waitReplies(sent, marker);
-  for (const it of items) addAnswer(round, it.p.name, got.get(it.p.id) || '', items.length === 1, run.timedOut.get(it.p.id) || '');
+  for (const it of items) addAnswer(round, it.p.name, got.get(it.p.id) || '', run.timedOut.get(it.p.id) || '', run.think.get(it.p.id) || '');
   return got;
 }
 
@@ -231,7 +247,7 @@ async function runScene(q) {
   if (!main) return log('没有可用的栏');
   const players = state.panes.filter(p => p.on && (state.scene === 'brainstorm' || p.id !== main.id));
   if (players.length < 2) return log(`至少要勾 2 个${state.scene === 'contest' ? '选手（主 AI 不算）' : '参加的 AI'}`);
-  run = { abort: false, skip: false, timedOut: new Map() };
+  run = { abort: false, skip: false, timedOut: new Map(), think: new Map() };
   lastStatus.clear();
   $('#prompt').value = '';
   $('#rounds').innerHTML = '';
