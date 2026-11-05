@@ -10,7 +10,13 @@
   const parentIsUs = window.top !== window && location.ancestorOrigins && location.ancestorOrigins[0] === EXT_ORIGIN;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const visible = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  // display: contents 的元素自己不占位置（ChatGPT 改版后整块回答就是这样），看里面有没有可见的子元素
+  const visible = el => {
+    if (!el) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'contents') return [...el.children].some(visible);
+    return el.getClientRects().length > 0 && cs.visibility !== 'hidden';
+  };
 
   function cfg() {
     const site = self.AIMV_findSite(location.hostname);
@@ -255,7 +261,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     return false;
   }
   const NOISE = /可能会犯错|can make mistakes|内容由\s*AI\s*生成|AI\s*生成.*仅供参考|请核查重要信息|check important info/i;
-  const UI_LINE = /^(编辑|复制|分享|重新生成|重试|点赞|点踩|朗读|收藏|引用|Edit|Copy|Share|Retry|Regenerate|思考已完成|已深度思考.{0,20}|已思考.{0,20})$/i;
+  const UI_LINE = /^(编辑|复制|分享|重新生成|重试|点赞|点踩|朗读|收藏|引用|Edit|Copy|Share|Retry|Regenerate|思考已完成|已深度思考.{0,20}|已思考.{0,20}|思考|最新一条回复|(ChatGPT|Gemini|Claude|DeepSeek|豆包|Kimi|元宝|千问)\s*(说|said)\s*[:：]?)$/i;
   function cleanReply(t) {
     return t.split('\n').filter(l => !(l.length < 60 && NOISE.test(l)) && !UI_LINE.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
