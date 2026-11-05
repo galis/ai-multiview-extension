@@ -17,11 +17,12 @@ const AVATAR = {
 };
 // 竞赛时把答案里的自报家门换成「选手」，免得裁判认出是谁
 const NAME_RE = /Claude|Anthropic|ChatGPT|GPT-?[\d.o]*|OpenAI|Gemini|Google|谷歌|DeepSeek|深度求索|豆包|字节跳动|通义千问|千问|通义|Qwen|阿里巴巴|阿里云|Kimi|月之暗面|Moonshot|腾讯元宝|元宝|混元|腾讯/gi;
+const NOT_FOUND_MS = 60000;  // 发出后这么久还找不到刚发的消息，当作没发出去（多半被限制了），不再等
 const STABLE_MS = 8000;      // 文字这么久不变、且没有「停止」按钮，算答完
 const DEFAULT_TIMEOUT_MIN = 5;   // 每轮默认最多等 5 分钟，超时的栏不再等
 const timeoutMin = () => Math.min(60, Math.max(1, Number(state.timeoutMin) || DEFAULT_TIMEOUT_MIN));
 
-let run = null;              // 进行中的场景：{ abort, skip, timedOut: Set(id) }
+let run = null;              // 进行中的场景：{ abort, skip, timedOut: Map(id -> 原因) }
 let openId = null;           // 当前弹出的栏
 const lastStatus = new Map();
 
@@ -134,11 +135,11 @@ function syncToggle(round) {
   b.hidden = ds.length < 2;
   b.textContent = ds.length && ds.every(d => d.open) ? '全部收起' : '全部展开';
 }
-function addAnswer(round, name, text, open = false, late = false) {
+function addAnswer(round, name, text, open = false, late = '') {
   const d = document.createElement('details');
   d.open = open || location.hash.includes('autotest');   // 自动测试时全部展开，方便截图核对
   const s = document.createElement('summary');
-  s.textContent = `${name}（${late ? '超时，' : ''}${text ? text.length + ' 字' : '没拿到回答'}）`;
+  s.textContent = `${name}（${late ? late + '，' : ''}${text ? text.length + ' 字' : '没拿到回答'}）`;
   if (late) s.classList.add('late');
   const pre = document.createElement('div');
   pre.className = 'txt';
@@ -183,16 +184,27 @@ async function waitReplies(items, marker) {
       const s = st.get(it.p.id);
       const r = await ask(it.p.id, { cmd: 'reply', marker, prompt: it.text }, true);
       const now = Date.now();
-      if (r && r.ok && r.found && r.text && r.text !== s.text) { s.text = r.text; s.changed = now; }
+      if (r && r.ok && r.found && r.text && r.text !== s.text) { s.text = r.text; s.changed = now; s.seen = true; }
+      if (r && r.ok && r.found) s.seen = true;
       const busy = r && r.busy;
       if (run.skip) s.done = true;
+      else if (r && r.limited) {
+        s.done = true; s.late = '被限制';
+        run.timedOut.set(it.p.id, s.late);
+        log(`${it.p.name}: 被限制（${r.limited}），不再等`);
+      }
+      else if (!s.seen && now - t0 > NOT_FOUND_MS) {
+        s.done = true; s.late = '没发出去';
+        run.timedOut.set(it.p.id, s.late);
+        log(`${it.p.name}: 发出 ${NOT_FOUND_MS / 1000} 秒还找不到刚发的消息，多半没发出去（可能被限制），不再等`);
+      }
       else if (s.text && !busy && now - s.changed >= STABLE_MS) s.done = true;
       else if (now - t0 > cap) {
-        s.done = s.late = true;
-        run.timedOut.add(it.p.id);
+        s.done = true; s.late = '超时';
+        run.timedOut.set(it.p.id, s.late);
         log(`${it.p.name}: 超时（${cap / 60000} 分钟），不再等${s.text ? '，用已有的 ' + s.text.length + ' 字' : '，没拿到回答'}`);
       }
-      if (s.late) setStatus(it.p.id, s.text ? `超时 · ${s.text.length} 字` : '超时 · 没拿到回答', 'late');
+      if (s.late) setStatus(it.p.id, s.text ? `${s.late} · ${s.text.length} 字` : `${s.late} · 没拿到回答`, 'late');
       else if (s.done) setStatus(it.p.id, s.text ? `答完 · ${s.text.length} 字` : '没拿到回答', s.text ? 'ok' : 'bad');
       else setStatus(it.p.id, s.text ? `回答中 · ${s.text.length} 字` : (!r ? '无回应' : !r.ok ? '读不到：' + r.err : !r.found ? '找不到刚发的消息' : '思考中…'), 'busy');
     }));
@@ -207,7 +219,7 @@ async function roundAsk(title, items, marker) {
   const round = addRound(title);
   const sent = await sendEach(items);
   const got = run.abort ? new Map() : await waitReplies(sent, marker);
-  for (const it of items) addAnswer(round, it.p.name, got.get(it.p.id) || '', items.length === 1, run.timedOut.has(it.p.id));
+  for (const it of items) addAnswer(round, it.p.name, got.get(it.p.id) || '', items.length === 1, run.timedOut.get(it.p.id) || '');
   return got;
 }
 
@@ -219,7 +231,7 @@ async function runScene(q) {
   if (!main) return log('没有可用的栏');
   const players = state.panes.filter(p => p.on && (state.scene === 'brainstorm' || p.id !== main.id));
   if (players.length < 2) return log(`至少要勾 2 个${state.scene === 'contest' ? '选手（主 AI 不算）' : '参加的 AI'}`);
-  run = { abort: false, skip: false, timedOut: new Set() };
+  run = { abort: false, skip: false, timedOut: new Map() };
   lastStatus.clear();
   $('#prompt').value = '';
   $('#rounds').innerHTML = '';

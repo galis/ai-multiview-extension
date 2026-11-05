@@ -291,6 +291,39 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     if ((document.body.textContent || '').includes(marker)) walk(document.body);
     return out;
   }
+  // 被限制（发太频繁、次数用完）：提示多半是几秒就消失的弹窗，所以一直盯着页面新冒出来的字，记下最近一次
+  const LIMIT_RE = /(请求|操作|访问|发送|提问|消息|对话).{0,4}(过于|太过|太|较为)频繁|频率(过高|超限|限制)|(次数|额度|配额|用量)(已)?(用完|用尽|耗尽|不足|达到上限|已达上限)|(已|达到|超出|超过)(了)?(今日|今天|本日|当前)?.{0,6}(上限|限额)|稍后再(试|来|问)|休息一下再|服务(繁忙|拥挤)|当前(使用|访问)?人数(过多|较多)|rate.?limit|too many (requests|messages)|usage limit|limit reached|reached (your|the) .{0,20}limit|try again later/i;
+  let limitHit = null;     // { text, t }
+  let sentAt = 0;
+  // 只认浮层里的提示（弹窗、toast、固定定位的条），不看聊天正文，免得回答里写了「上限」被当成限制
+  const inOverlay = el => {
+    if (el.closest('[role="alert"],[role="alertdialog"],[role="dialog"],[role="status"]')) return true;
+    for (let a = el; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).position === 'fixed') return true;
+    return false;
+  };
+  const limitText = el => {
+    const t = (el.innerText || el.textContent || '').trim();
+    return t && t.length < 160 && LIMIT_RE.test(t) && inOverlay(el) ? t : '';
+  };
+  new MutationObserver(ms => {
+    if (!sentAt) return;
+    for (const m of ms) for (const n of m.addedNodes) {
+      const el = n.nodeType === 1 ? n : n.parentElement;
+      if (!el || el.closest('textarea,[contenteditable="true"]')) continue;
+      const t = limitText(el);
+      if (t) limitHit = { text: t.split('\n')[0].slice(0, 60), t: Date.now() };
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: false });
+  // 还挂在页面上的提示（弹窗、toast）
+  function limitNow() {
+    for (const el of document.querySelectorAll('[role="alert"],[role="alertdialog"],[role="dialog"],[role="status"],[class*="toast"],[class*="Toast"],[class*="notice"],[class*="Notice"],[class*="modal"],[class*="Modal"]')) {
+      if (!visible(el) || el.closest('textarea,[contenteditable="true"]')) continue;
+      const t = limitText(el);
+      if (t) return t.split('\n')[0].slice(0, 60);
+    }
+    return limitHit && limitHit.t >= sentAt ? limitHit.text : '';
+  }
+
   function reply(marker, prompt) {
     const c = cfg();
     const inp = queryFirst(c.input);
@@ -300,19 +333,23 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
       const r = stripPrompt(textAfter(el, marker, inp && inp.el), prompt || marker);
       if (!best || r.matched > best.matched) best = r;
     }
-    if (!best) return { ok: true, found: false, busy: busy() };
+    if (!best) return { ok: true, found: false, busy: busy(), limited: limitNow() };
     let rest = best.rest.replace(/^\s*(…|\.\.\.)?\s*(展开|显示更多|Show more)?/, '');
     if (c.site && c.site.reply) {   // 站点给了回答选择器时优先用它（取最后一个）
       const els = [...document.querySelectorAll(c.site.reply)].filter(visible);
       if (els.length) rest = els[els.length - 1].innerText;
     }
-    return { ok: true, found: true, text: cleanReply(rest), busy: busy(), href: location.href };
+    const text = cleanReply(rest);
+    // 回答本身就是一句限制提示（有的站把它显示成 AI 的回复）
+    const limited = limitNow() || (text.length < 80 && LIMIT_RE.test(text) ? text.split('\n')[0].slice(0, 60) : '');
+    return { ok: true, found: true, text: limited ? '' : text, busy: busy(), limited, href: location.href };
   }
 
   async function handle(msg) {
     if (msg.cmd === 'probe') return probe();
     if (msg.cmd === 'think') return think(!!msg.on);
     if (msg.cmd === 'theme') return theme(msg.target, msg.mode);
+    if (msg.cmd === 'send' || (msg.cmd === 'fill' && msg.send)) { sentAt = Date.now(); limitHit = null; }
     if (msg.cmd === 'fill') return fill(msg.text, !!msg.send);
     if (msg.cmd === 'send') return sendNow(msg.text);
     if (msg.cmd === 'reply') return reply(msg.marker, msg.prompt);
