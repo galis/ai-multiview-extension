@@ -235,12 +235,87 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     return { ok: true, pageDark: dark, inverted: !!document.getElementById('__aimv_dark') };
   }
 
+
+  // ---------- 读回答（场景模式用） ----------
+  // 页面每 2~3 秒问一次：找到我们发出的那条消息（以唯一标记开头），取它后面新出现的文字。
+  // 是否答完由页面判断：文字一段时间不再变、且没有「停止生成」按钮。
+  const STOP_RE = /(^|[^a-z])stop|停止|中止|取消生成/i;
+  function busy() {
+    for (const el of document.querySelectorAll('button,[role="button"]')) {
+      if (!visible(el)) continue;
+      const cls = typeof el.className === 'string' ? el.className : '';
+      const s = [el.getAttribute('aria-label'), el.getAttribute('data-testid'), el.getAttribute('title'), cls, (el.innerText || '').length < 12 ? el.innerText : ''].join(' ');
+      if (STOP_RE.test(s)) return true;
+    }
+    return false;
+  }
+  const NOISE = /可能会犯错|can make mistakes|内容由\s*AI\s*生成|AI\s*生成.*仅供参考|请核查重要信息|check important info/i;
+  const UI_LINE = /^(编辑|复制|分享|重新生成|重试|点赞|点踩|朗读|收藏|引用|Edit|Copy|Share|Retry|Regenerate|思考已完成|已深度思考.{0,20}|已思考.{0,20})$/i;
+  function cleanReply(t) {
+    return t.split('\n').filter(l => !(l.length < 60 && NOISE.test(l)) && !UI_LINE.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  const isScroller = a => /auto|scroll/.test(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight + 20;
+  // 从 el 里标记出现的位置开始，按文档顺序取到聊天滚动区结尾的文字（跳过输入框所在部分）
+  function textAfter(el, marker, inpEl) {
+    const t = el.innerText || '';
+    const parts = [t.slice(Math.max(0, t.indexOf(marker)))];
+    for (let a = el; a && a !== document.body && !isScroller(a); a = a.parentElement) {
+      for (let sib = a.nextElementSibling; sib; sib = sib.nextElementSibling) {
+        if (inpEl && sib.contains(inpEl)) continue;
+        if (sib.matches('nav,aside,footer,textarea') || sib.querySelector('textarea')) continue;
+        if (!visible(sib)) continue;
+        parts.push(sib.innerText || '');
+      }
+    }
+    return parts.join('\n');
+  }
+  // 去掉开头那段「我们发的问题」：逐个非空白字符和问题对齐，对不上就停（问题被折叠时也能停住）
+  function stripPrompt(t, prompt) {
+    const pn = norm(prompt);
+    let i = 0, k = 0;
+    for (; i < t.length && k < pn.length; i++) {
+      if (/\s/.test(t[i])) continue;
+      if (t[i] !== pn[k]) break;
+      k++;
+    }
+    return { rest: t.slice(i), matched: k };
+  }
+  // 含标记的最内层元素。标记可能被拆进几个 span（豆包等），所以按 textContent 找
+  function markerEls(marker) {
+    const out = [];
+    const walk = el => {
+      let deeper = false;
+      for (const ch of el.children) if ((ch.textContent || '').includes(marker)) { deeper = true; walk(ch); }
+      if (!deeper) out.push(el);
+    };
+    if ((document.body.textContent || '').includes(marker)) walk(document.body);
+    return out;
+  }
+  function reply(marker, prompt) {
+    const c = cfg();
+    const inp = queryFirst(c.input);
+    let best = null;
+    for (const el of markerEls(marker)) {
+      if (!visible(el) || el.closest('nav,aside,textarea') || (inp && inp.el.contains(el))) continue;
+      const r = stripPrompt(textAfter(el, marker, inp && inp.el), prompt || marker);
+      if (!best || r.matched > best.matched) best = r;
+    }
+    if (!best) return { ok: true, found: false, busy: busy() };
+    let rest = best.rest.replace(/^\s*(…|\.\.\.)?\s*(展开|显示更多|Show more)?/, '');
+    if (c.site && c.site.reply) {   // 站点给了回答选择器时优先用它（取最后一个）
+      const els = [...document.querySelectorAll(c.site.reply)].filter(visible);
+      if (els.length) rest = els[els.length - 1].innerText;
+    }
+    return { ok: true, found: true, text: cleanReply(rest), busy: busy(), href: location.href };
+  }
+
   async function handle(msg) {
     if (msg.cmd === 'probe') return probe();
     if (msg.cmd === 'think') return think(!!msg.on);
     if (msg.cmd === 'theme') return theme(msg.target, msg.mode);
     if (msg.cmd === 'fill') return fill(msg.text, !!msg.send);
     if (msg.cmd === 'send') return sendNow(msg.text);
+    if (msg.cmd === 'reply') return reply(msg.marker, msg.prompt);
     return { ok: false, err: 'unknown cmd' };
   }
 

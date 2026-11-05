@@ -60,7 +60,7 @@ function resetPanes() {
 }
 
 function render() {
-  document.body.className = `layout-${state.layout} mode-${state.mode}`;
+  document.body.className = `layout-${state.layout} mode-${state.mode}${SCENES[state.scene] ? ' scene' : ''}`;
   $('#layout').value = state.layout;
   $('#mode').value = state.mode;
   $('#lazy').checked = state.lazy;
@@ -94,6 +94,7 @@ function render() {
     else host.insertBefore(el, cursor);
     if (i > 0) host.insertBefore(makeSplitter(i), el);
   });
+  renderBoard();
 }
 
 function makePane(p) {
@@ -112,7 +113,8 @@ function makePane(p) {
     <button class="invert"></button>
     <button class="reload" title="刷新">↻</button>
     <button class="open" title="在新标签页打开（登录请在这里做）">↗</button>
-    <button class="remove" title="删掉这一栏">✕</button>`;
+    <button class="remove" title="删掉这一栏">✕</button>
+    <button class="collapse" title="收起（Esc）">收起</button>`;
   head.querySelector('.name').textContent = p.name;
   head.querySelector('.name').title = p.url;
   const cb = head.querySelector('.on');
@@ -123,6 +125,7 @@ function makePane(p) {
   paintInv();
   invBtn.onclick = () => { p.invert = INVERT_NEXT[invertOf(p)]; delete p.dark; save(); paintInv(); applyPane(p, false); };
   head.querySelector('.open').onclick = () => window.open(p.url, '_blank');
+  head.querySelector('.collapse').onclick = () => openPane(null);
   head.querySelector('.remove').onclick = () => {
     state.panes = state.panes.filter(x => x.id !== p.id);
     save(); render();
@@ -278,6 +281,7 @@ async function broadcast(send) {
   const text = $('#prompt').value.trim();
   if (!text) return;
   if (text === '/clear') { $('#prompt').value = ''; return clearAll(); }
+  if (send && SCENES[state.scene]) return runScene(text);
   const targets = state.panes.filter(p => p.on);
   const t0 = performance.now();
   log(`${send ? '发送' : '填入'}到 ${targets.length} 栏${send && !state.serial ? '（先填字，再同时发送）' : ''}`);
@@ -419,13 +423,14 @@ if (location.hash.startsWith('#popout')) {
   if (window.top !== window) { document.body.textContent = '不能被嵌入使用。'; return; }
   await load();
   wireToolbar();
+  wireScene();
   applyTheme();
   // 先让后台给本标签页加好"去掉防嵌入响应头"的规则，再加载 iframe
   const r = await chrome.runtime.sendMessage({ type: 'registerTab' });
   registered = !!(r && r.ok);
   if (!registered) log('注册规则失败：' + (r && r.err));
   render();
-  window.__aimv = { broadcast, diagnose, state: () => state };
+  window.__aimv = { broadcast, diagnose, runScene, state: () => state };
   autotest();
 })();
 
@@ -454,6 +459,15 @@ async function autotest() {
     sent = await broadcast(true);
     if (only) state.panes.forEach((p, i) => { p.on = saved[i]; });
   }
-  await chrome.storage.local.set({ aimvTest: { at: new Date().toISOString(), ready, diag, think, sent } });
+  let scene = null;
+  if (h.get('scene')) {   // #autotest&scene=brainstorm|contest&q=问题&only=…
+    const only = h.get('only') ? h.get('only').split(',') : null;
+    if (only) state.panes.forEach(p => { p.on = only.includes(p.siteId); });
+    state.scene = h.get('scene'); render();
+    await runScene(h.get('q'));
+    scene = $('#rounds').innerText;
+  }
+  if (h.get('open')) openPane((state.panes.find(p => p.siteId === h.get('open')) || {}).id);   // #autotest&open=deepseek：弹出这一栏
+  await chrome.storage.local.set({ aimvTest: { at: new Date().toISOString(), ready, diag, think, sent, scene } });
   log('自动测试完成');
 }

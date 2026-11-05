@@ -10,7 +10,14 @@
     <strong class="brand">AI 并排</strong>
     <select id="addSite" title="加一栏"><option value="">＋ 加一栏…</option></select>
     <span class="sep"></span>
-    <label>排法
+    <label title="头脑风暴、竞赛：各栏缩成头像，点头像弹出网站">场景
+      <select id="scene">
+        <option value="none">普通并排</option>
+        <option value="brainstorm">头脑风暴</option>
+        <option value="contest">竞赛</option>
+      </select>
+    </label>
+    <label class="no-scene">排法
       <select id="layout">
         <option value="columns">一排（可拖宽）</option>
         <option value="grid">两行网格</option>
@@ -40,7 +47,18 @@
     <button id="reset" title="恢复默认的 8 个站">恢复默认</button>
   </header>
 
+  <section id="board">
+    <div id="avatars"></div>
+    <div class="board-ctl">
+      <label><span id="mainLabel">主 AI</span> <select id="judge"></select></label>
+      <button id="skipWait" title="有的栏一直不算答完时，用各栏现有的回答进入下一步">不等了，继续</button>
+      <button id="stopScene">停止</button>
+      <span id="sceneHint"></span>
+    </div>
+    <div id="rounds"></div>
+  </section>
   <main id="panes"></main>
+  <div id="backdrop"></div>
 
   <footer id="composer">
     <textarea id="prompt" rows="2" placeholder="输入一次，发给所有勾选的栏。Ctrl/⌘ + Enter 发送；输入 /clear 让勾选的栏都开新对话"></textarea>
@@ -54,5 +72,6 @@
   <div id="dragShield"></div>
   <script src="sites.js"></script>
   <script src="multiview.js"></script>
+  <script src="scene.js"></script>
 </body>
 </html>

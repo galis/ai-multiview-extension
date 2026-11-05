@@ -53,3 +53,47 @@ body.reordering .pane::after { content: ""; position: absolute; inset: 30px 0 0 
 #prompt { flex: 1; resize: vertical; min-height: 40px; max-height: 40vh; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 #composer .actions { display: flex; flex-direction: column; gap: 6px; }
 #log { width: 260px; max-height: 72px; overflow: auto; font-size: 11px; color: var(--muted); }
+
+/* ---------- 场景模式：头像板 + 弹出框 ---------- */
+#board, #backdrop, .pane .collapse { display: none; }
+body.scene .no-scene { display: none; }
+body.scene #toolbar, body.scene #composer { position: relative; z-index: 2; background: var(--bg); }
+body.scene #board { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; z-index: 1; background: var(--bg); padding: 12px 16px; gap: 10px; }
+/* 各栏叠在头像板下面：透明但照常排版，网页才会正常运行（放到屏幕外会被浏览器降速） */
+body.scene #panes { position: fixed; inset: 0; display: block; z-index: 0; overflow: hidden; padding: 0; pointer-events: none; }
+/* #panes 自成一层：弹出时整层提到遮罩上面，否则弹出的栏会被头像板挡住 */
+body.scene.popup #panes { z-index: 25; }
+body.scene .splitter { display: none; }
+body.scene .pane { position: absolute; top: 5vh; left: 50%; width: min(1000px, 92vw); height: 82vh; transform: translateX(-50%);
+  opacity: 0; pointer-events: none; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+body.scene .pane.open { opacity: 1; pointer-events: auto; z-index: 30; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+body.scene.popup #backdrop { display: block; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); }
+body.scene .pane .collapse { display: inline-block; }
+body.scene .pane .remove, body.scene .pane .on { display: none; }
+
+#avatars { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+.av { width: 96px; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.av .face { width: 56px; height: 56px; border-radius: 50%; border: 3px solid transparent; color: #fff; font-weight: 700; font-size: 16px; padding: 0;
+  outline: 3px solid var(--line); outline-offset: 1px; }
+.av .face:hover { transform: scale(1.06); }
+.av.main .face { outline-color: #eab308; }
+.av[data-state="busy"] .face { outline-color: var(--accent); animation: aimvPulse 1.2s ease-in-out infinite; }
+.av[data-state="ok"] .face { outline-color: var(--ok); }
+.av[data-state="bad"] .face { outline-color: var(--bad); }
+.av[data-state="win"] .face { outline-color: #eab308; outline-width: 5px; }
+@keyframes aimvPulse { 50% { outline-offset: 4px; } }
+.av .nm { font-weight: 600; font-size: 12px; }
+.av .st { font-size: 11px; color: var(--muted); max-width: 96px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.av .join { font-size: 11px; color: var(--muted); }
+.av .role { font-size: 11px; color: #ca8a04; min-height: 14px; }
+
+.board-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+#sceneHint { color: var(--muted); font-size: 12px; }
+#rounds { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; max-width: 1000px; width: 100%; margin: 0 auto; }
+#rounds .question { font-weight: 600; font-size: 14px; }
+.round { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.round h3, .final h3 { margin: 0 0 6px; font-size: 13px; }
+.round details { border-top: 1px solid var(--line); padding: 4px 0; }
+.round summary { cursor: pointer; }
+.txt { white-space: pre-wrap; padding: 6px 0 2px; line-height: 1.6; }
+.final { background: var(--panel); border: 2px solid #eab308; border-radius: 8px; padding: 10px 14px; }
