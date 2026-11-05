@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>AI 并排对比</title>
+  <link rel="stylesheet" href="multiview.css">
+</head>
+<body>
+  <header id="toolbar">
+    <strong class="brand">AI 并排</strong>
+    <select id="addSite" title="加一栏"><option value="">＋ 加一栏…</option></select>
+    <span class="sep"></span>
+    <label>排法
+      <select id="layout">
+        <option value="columns">一排（可拖宽）</option>
+        <option value="grid">两行网格</option>
+        <option value="scroll">横向滚动</option>
+      </select>
+    </label>
+    <label>模式
+      <select id="mode">
+        <option value="iframe">嵌在本页</option>
+        <option value="window">多窗口平铺</option>
+      </select>
+    </label>
+    <label title="没点过的栏先不加载，省内存"><input type="checkbox" id="lazy"> 按需加载</label>
+    <label title="给支持的站切到深度思考 / 推理模型；不支持的站会提示手动选"><input type="checkbox" id="think"> 深度思考</label>
+    <span class="sep"></span>
+    <button id="tile" class="win-only">平铺成窗口</button>
+    <button id="closeWins" class="win-only">关掉这些窗口</button>
+    <button id="diagnose" title="逐栏检查找不找得到输入框和发送按钮">诊断</button>
+    <button id="reset" title="恢复默认的 8 个站">恢复默认</button>
+  </header>
+
+  <main id="panes"></main>
+
+  <footer id="composer">
+    <textarea id="prompt" rows="2" placeholder="输入一次，发给所有勾选的栏。Ctrl/⌘ + Enter 发送"></textarea>
+    <div class="actions">
+      <button id="sendAll" class="primary">发送到全部</button>
+      <button id="fillAll">只填不发</button>
+    </div>
+    <div id="log"></div>
+  </footer>
+
+  <div id="dragShield"></div>
+  <script src="sites.js"></script>
+  <script src="multiview.js"></script>
+</body>
+</html>
