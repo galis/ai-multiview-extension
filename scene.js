@@ -325,8 +325,20 @@ async function brainstorm(q, main, players) {
   const t3 = `${mk3}\n头脑风暴结束，请你来总结。题目：${q}\n\n各 AI 讨论后的看法：\n\n` +
     views.map(([p, t]) => `【${p.name}】\n${clip(t, 2000)}`).join('\n\n') +
     '\n\n请总结：大家的共识、主要分歧、最有价值的点子，最后给出你的结论。';
-  const r3 = await roundAsk(`总结 · ${main.name}`, [{ p: main, text: t3 }], mk3);
-  const fin = r3.get(main.id);
+  let r3 = await roundAsk(`总结 · ${main.name}`, [{ p: main, text: t3 }], mk3);
+  let fin = r3.get(main.id);
+  // 主 AI 这一步被限制 / 没发出去 / 超时：换一个答完了的 AI 再总结一次
+  const alt = !fin && !run.abort && got1.find(p => p !== main && !run.timedOut.has(p.id));
+  if (alt) {
+    log(`${main.name} ${run.timedOut.get(main.id) || '没回答'}，改由 ${alt.name} 总结`);
+    const t3b = `${mk3}\n头脑风暴结束，请你来总结。题目：${q}\n\n各 AI 讨论后的看法：\n\n` +
+      players.filter(p => p !== alt).map(p => [p, r2.get(p.id) || r1.get(p.id)]).filter(([, t]) => t)
+        .map(([p, t]) => `【${p.name}】\n${clip(t, 2000)}`).join('\n\n') +
+      '\n\n请总结：大家的共识、主要分歧、最有价值的点子，最后给出你的结论。';
+    r3 = await roundAsk(`总结 · ${alt.name}`, [{ p: alt, text: t3b }], mk3);
+    fin = r3.get(alt.id);
+    if (fin) return showFinal(`${alt.name} 的总结`, fin);
+  }
   if (fin) showFinal(`${main.name} 的总结`, fin);
 }
 

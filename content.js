@@ -261,9 +261,17 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     return false;
   }
   const NOISE = /可能会犯错|can make mistakes|内容由\s*AI\s*生成|AI\s*生成.*仅供参考|请核查重要信息|check important info/i;
-  const UI_LINE = /^(编辑|复制|分享|重新生成|重试|点赞|点踩|朗读|收藏|引用|Edit|Copy|Share|Retry|Regenerate|思考已完成|已深度思考.{0,20}|已思考.{0,20}|思考|最新一条回复|(ChatGPT|Gemini|Claude|DeepSeek|豆包|Kimi|元宝|千问)\s*(说|said)\s*[:：]?)$/i;
+  const UI_LINE = /^(编辑|复制|分享|重新生成|重试|点赞|点踩|朗读|收藏|引用|Edit|Copy|Share|Retry|Regenerate|思考已完成|已深度思考.{0,20}|已思考.{0,20}|思考|最新一条回复|just now|刚刚|\d+\s*(秒|分钟)前|(ChatGPT|Gemini|Claude|DeepSeek|豆包|Kimi|元宝|千问)\s*(说|said)\s*[:：]?)$/i;
+  // 「已完成思考」这类状态行：它前面的都是思考摘要（例如千问的「构思观点与理由」），连同它一起去掉
+  const THINK_DONE = /^(已完成思考|思考已完成|已深度思考|已思考)/;
+  const SAID = /^(ChatGPT|Gemini|Claude|DeepSeek|豆包|Kimi|元宝|千问)\s*(说|said|responded|replied)\s*[:：]\s*/i;
   function cleanReply(t) {
-    return t.split('\n').filter(l => !(l.length < 60 && NOISE.test(l)) && !UI_LINE.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    let ls = t.split('\n');
+    const k = ls.map(l => THINK_DONE.test(l.trim())).lastIndexOf(true);
+    if (k >= 0 && k < ls.length - 1) ls = ls.slice(k + 1);
+    return ls.map(l => l.replace(SAID, ''))
+      .filter(l => !(l.length < 60 && NOISE.test(l)) && !UI_LINE.test(l.trim()) && (!l.trim() || /[\p{L}\p{N}]/u.test(l)))
+      .join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
   const isScroller = a => /auto|scroll/.test(getComputedStyle(a).overflowY) && a.scrollHeight > a.clientHeight + 20;
   // 从 el 里标记出现的位置开始，按文档顺序取到聊天滚动区结尾的文字（跳过输入框所在部分）

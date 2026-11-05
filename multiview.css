@@ -133,11 +133,11 @@ html.rec body.scene #board { padding: calc(var(--W) * .05) calc(var(--W) * .04) 
 html.rec body.scene #composer { padding: calc(var(--W) * .02) calc(var(--W) * .04) calc(var(--W) * .04); }
 html.rec body.scene #prompt { font-size: calc(var(--W) * .032); }
 html.rec body.scene #sendAll { font-size: calc(var(--W) * .032); padding: .4em 1em; }
-html.rec #avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--W) * .035) calc(var(--W) * .02); }
-html.rec .av { width: auto; gap: calc(var(--W) * .008); }
+html.rec #avatars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(var(--W) * .035) calc(var(--W) * .02); }
+html.rec .av { width: auto; min-width: 0; gap: calc(var(--W) * .008); }
 html.rec .av .face { width: calc(var(--W) * .17); height: calc(var(--W) * .17); font-size: calc(var(--W) * .05); outline-width: calc(var(--W) * .008); }
 html.rec .av .nm { font-size: calc(var(--W) * .034); }
-html.rec .av .st { font-size: calc(var(--W) * .027); max-width: none; }
+html.rec .av .st { font-size: calc(var(--W) * .027); max-width: 100%; }
 html.rec .av .role { font-size: calc(var(--W) * .027); min-height: 0; }
 html.rec .av .join { display: none; }
 html.rec #rounds { max-width: none; font-size: calc(var(--W) * .03); gap: calc(var(--W) * .025); }
