@@ -1,9 +1,12 @@
+/* 主题由 multiview.js 写到 <html data-theme="light|dark">（跟随系统时也会解析成其中一个） */
 :root {
   --bg: #f4f4f5; --panel: #fff; --line: #d4d4d8; --text: #18181b; --muted: #71717a;
   --accent: #2563eb; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #18181b; --panel: #27272a; --line: #3f3f46; --text: #f4f4f5; --muted: #a1a1aa; }
+:root[data-theme="dark"] {
+  --bg: #18181b; --panel: #27272a; --line: #3f3f46; --text: #f4f4f5; --muted: #a1a1aa;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -36,7 +39,7 @@ body.layout-grid .pane { flex: none !important; }
 .badge.ok { background: var(--ok); color: #fff; }
 .badge.warn { background: var(--warn); color: #fff; }
 .badge.bad { background: var(--bad); color: #fff; }
-.pane iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+.pane iframe { flex: 1; border: 0; width: 100%; background: var(--panel); }
 .pane .placeholder { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: var(--muted); padding: 12px; text-align: center; }
 
 .splitter { flex: 0 0 6px; cursor: col-resize; background: var(--line); }

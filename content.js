@@ -176,23 +176,60 @@
     return { ok: false, err: 'think 配置有误' };
   }
 
-  // 强制深色：给整页加反色滤镜，图片和视频再反回来
-  function dark(on) {
+  // 主题：给整页加反色滤镜，把浅色页面变深（或深色页面变浅），图片和视频再反回来保持原色。
+  // mode = auto：量一下页面实际底色，和想要的主题不一致才反色；on：一直反色；off：不动。
+  function setInvert(on) {
     let st = document.getElementById('__aimv_dark');
     if (on && !st) {
       st = document.createElement('style');
       st.id = '__aimv_dark';
-      st.textContent = `html{filter:invert(.92) hue-rotate(180deg)!important;background:#fff!important}
+      st.textContent = `html{filter:invert(.92) hue-rotate(180deg)!important}
 img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important}`;
       document.documentElement.appendChild(st);
     } else if (!on && st) st.remove();
-    return { ok: true, dark: !!on };
+  }
+
+  // 页面本身（不算我们的滤镜）是不是深色：取几个点，往上找第一个不透明的背景色，算亮度
+  function pageIsDark() {
+    const had = !!document.getElementById('__aimv_dark');
+    if (had) setInvert(false);
+    // 颜色可能是 rgb()、oklch()、color(srgb …) 等任意写法：画到 1×1 画布上再读像素，统一成 RGBA
+    const ctx = (pageIsDark.ctx ||= Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true }));
+    const rgba = css => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fillStyle = css; ctx.fillRect(0, 0, 1, 1); return ctx.getImageData(0, 0, 1, 1).data; };
+    const lum = el => {
+      for (; el && el.nodeType === 1; el = el.parentElement) {
+        const [r, g, b, a] = rgba(getComputedStyle(el).backgroundColor);
+        if (a > 128) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      }
+      return null;
+    };
+    const W = innerWidth, H = innerHeight;
+    const pts = [[W / 2, H / 2], [W / 2, 60], [W / 4, H * 0.75], [W * 0.75, H / 3]];
+    const vals = pts.map(([x, y]) => lum(document.elementFromPoint(x, y))).filter(v => v !== null);
+    if (had) setInvert(true);
+    if (!vals.length) return /dark/.test(getComputedStyle(document.documentElement).colorScheme);
+    return vals.filter(v => v < 0.4).length > vals.length / 2;
+  }
+
+  let themeTimers = [];
+  function theme(target, mode) {
+    themeTimers.forEach(clearTimeout);
+    themeTimers = [];
+    const apply = () => {
+      const dark = pageIsDark();
+      setInvert(mode === 'on' || (mode === 'auto' && dark !== (target === 'dark')));
+      return dark;
+    };
+    const dark = apply();
+    // 单页应用加载时底色会变，过一会儿再量两次
+    if (mode === 'auto') themeTimers = [1500, 4000].map(ms => setTimeout(apply, ms));
+    return { ok: true, pageDark: dark, inverted: !!document.getElementById('__aimv_dark') };
   }
 
   async function handle(msg) {
     if (msg.cmd === 'probe') return probe();
     if (msg.cmd === 'think') return think(!!msg.on);
-    if (msg.cmd === 'dark') return dark(!!msg.on);
+    if (msg.cmd === 'theme') return theme(msg.target, msg.mode);
     if (msg.cmd === 'fill') return fill(msg.text, !!msg.send);
     return { ok: false, err: 'unknown cmd' };
   }

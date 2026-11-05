@@ -9,7 +9,17 @@ const live = new Map();        // paneId -> { iframe, badge, loaded, ready, read
 const pending = new Map();     // reqId -> resolve
 let registered = false;
 
-const isDark = p => p.dark ?? !!(siteById(p.siteId) || {}).dark;
+// 每栏的反色：auto = 页面底色和主题不一致才反色；on = 一直反色；off = 不动
+const INVERT_NEXT = { auto: 'on', on: 'off', off: 'auto' };
+const INVERT_LABEL = { auto: '◐', on: '🌗', off: '○' };
+const INVERT_TITLE = { auto: '颜色：自动（页面底色和主题不一致时反色）', on: '颜色：一直反色', off: '颜色：不处理，保持网站原样' };
+const invertOf = p => p.invert || (p.dark === true ? 'on' : p.dark === false ? 'off' : 'auto');
+const mql = matchMedia('(prefers-color-scheme: dark)');
+const themeTarget = () => (state.theme === 'light' || state.theme === 'dark') ? state.theme : (mql.matches ? 'dark' : 'light');
+function applyTheme() {
+  document.documentElement.dataset.theme = themeTarget();
+  $('#theme').value = state.theme || 'system';
+}
 const uid = () => Math.random().toString(36).slice(2, 9);
 const siteById = id => SITES.find(s => s.id === id);
 const mkPane = s => ({ id: uid(), siteId: s.id, name: s.name, url: s.url, on: true, w: 1 });
@@ -98,7 +108,7 @@ function makePane(p) {
     <span class="name"></span>
     <span class="badge">未加载</span>
     <span class="grow"></span>
-    <button class="dark" title="强制深色（反色）">🌙</button>
+    <button class="invert"></button>
     <button class="reload" title="刷新">↻</button>
     <button class="open" title="在新标签页打开（登录请在这里做）">↗</button>
     <button class="remove" title="删掉这一栏">✕</button>`;
@@ -107,10 +117,10 @@ function makePane(p) {
   const cb = head.querySelector('.on');
   cb.checked = p.on;
   cb.onchange = () => { p.on = cb.checked; save(); };
-  const darkBtn = head.querySelector('.dark');
-  const paintDark = () => { darkBtn.style.opacity = isDark(p) ? 1 : 0.35; };
-  paintDark();
-  darkBtn.onclick = () => { p.dark = !isDark(p); save(); paintDark(); applyPane(p, false); };
+  const invBtn = head.querySelector('.invert');
+  const paintInv = () => { invBtn.textContent = INVERT_LABEL[invertOf(p)]; invBtn.title = INVERT_TITLE[invertOf(p)] + '（点击切换）'; };
+  paintInv();
+  invBtn.onclick = () => { p.invert = INVERT_NEXT[invertOf(p)]; delete p.dark; save(); paintInv(); applyPane(p, false); };
   head.querySelector('.open').onclick = () => window.open(p.url, '_blank');
   head.querySelector('.remove').onclick = () => {
     state.panes = state.panes.filter(x => x.id !== p.id);
@@ -247,7 +257,7 @@ function askFrame(id, cmd, timeout = 12000) {
   return new Promise(resolve => {
     pending.set(reqId, resolve);
     setTimeout(() => { if (pending.delete(reqId)) resolve({ ok: false, err: '超时没回应' }); }, timeout);
-    if (cmd.cmd !== 'dark') l.iframe.focus();
+    if (cmd.cmd !== 'theme') l.iframe.focus();
     l.iframe.contentWindow.postMessage({ aimv: 'cmd', reqId, ...cmd }, '*');
   });
 }
@@ -279,10 +289,11 @@ async function broadcast(send) {
   return results;
 }
 
-// 栏加载好后：套用深色；首次就绪时如果开过「深度思考」也套用
+// 栏加载好后：套用主题；首次就绪时如果开过「深度思考」也套用
 async function applyPane(p, withThink) {
   if (state.mode !== 'iframe') return;
-  if (isDark(p) || p.dark === false) await askFrame(p.id, { cmd: 'dark', on: isDark(p) }, 3000);
+  const r = await askFrame(p.id, { cmd: 'theme', target: themeTarget(), mode: invertOf(p) }, 3000);
+  if (r && r.ok) live.get(p.id).badge.dataset.inv = r.inverted ? '1' : '';
   if (withThink && state.think != null) await setThink(p, state.think);
 }
 
@@ -333,6 +344,11 @@ function wireToolbar() {
     state.think = e.target.checked; save();
     for (const p of state.panes) { await setThink(p, state.think); await sleep(300); }
   };
+  $('#theme').onchange = e => {
+    state.theme = e.target.value; save(); applyTheme();
+    state.panes.forEach(p => applyPane(p, false));
+  };
+  mql.addEventListener('change', () => { if (!state.theme || state.theme === 'system') { applyTheme(); state.panes.forEach(p => applyPane(p, false)); } });
   $('#lazy').onchange = e => { state.lazy = e.target.checked; save(); };
   $('#reset').onclick = () => { if (confirm('恢复默认的 8 个站？当前布局会丢掉。')) { state = defaults(); resetPanes(); save(); render(); } };
   $('#diagnose').onclick = diagnose;
@@ -358,6 +374,7 @@ if (location.hash.startsWith('#popout')) {
   if (window.top !== window) { document.body.textContent = '不能被嵌入使用。'; return; }
   await load();
   wireToolbar();
+  applyTheme();
   // 先让后台给本标签页加好"去掉防嵌入响应头"的规则，再加载 iframe
   const r = await chrome.runtime.sendMessage({ type: 'registerTab' });
   registered = !!(r && r.ok);
@@ -376,6 +393,7 @@ async function autotest() {
   while (Date.now() - t0 < 30000 && [...live.values()].some(l => l.loaded && !l.ready)) await sleep(1000);
   await sleep(4000);
   const ready = Object.fromEntries(state.panes.map(p => [p.name, !!live.get(p.id)?.ready]));
+  if (h.get('theme')) { state.theme = h.get('theme'); applyTheme(); for (const p of state.panes) await applyPane(p, false); await sleep(5000); }
   const diag = await diagnose();
   let sent = null, think = null;
   if (h.has('think')) {   // #autotest&think=1 / think=0

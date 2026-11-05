@@ -1,7 +1,6 @@
 // 各站配置：网址、识别用的域名、输入框和发送按钮的候选选择器（按顺序试，取第一个可见的）。
 // 站点改版导致广播失效时，只需改这里。改完到 chrome://extensions 点本扩展的刷新按钮。
 // think：深度思考开关怎么点。toggle = 一个开关按钮；menu = 点开模型菜单选一项。没写的站要在栏里手动选。
-// dark：默认打开「强制深色」（反色滤镜）。
 // 通用兜底（GENERIC）会在站点自己的候选都没命中时再试。
 self.AIMV_SITES = [
   {
@@ -33,8 +32,7 @@ self.AIMV_SITES = [
     id: 'doubao', name: '豆包', url: 'https://www.doubao.com/chat/',
     hosts: ['www.doubao.com', 'doubao.com'],
     input: ['[data-testid="chat_input_input"] [contenteditable="true"]', 'textarea[data-testid="chat_input_input"]', 'div.tiptap[contenteditable="true"]'],
-    send: ['button[data-testid="chat_input_send_button"]', 'button#flow-end-msg-send'],
-    dark: true      // 豆包在框里是浅色，默认帮它反色
+    send: ['button[data-testid="chat_input_send_button"]', 'button#flow-end-msg-send']
   },
   {
     id: 'qwen', name: '千问', url: 'https://www.qianwen.com/',
@@ -42,8 +40,7 @@ self.AIMV_SITES = [
     input: ['div[data-slate-editor="true"][contenteditable="true"]', 'textarea'],
     send: ['button[aria-label="发送消息"]', 'button[aria-label*="发送"]'],
     fill: 'paste',  // Slate 编辑器：execCommand 改了 DOM 但编辑器不认，只认粘贴
-    think: { type: 'menu', trigger: 'button[data-state]', triggerText: ['快速', '思考研究'], item: '[role="menuitemcheckbox"]', on: '思考研究', off: '快速' },  // 输入框下方的「快速 ▾」
-    dark: true      // 千问把主题锁成浅色，默认帮它反色
+    think: { type: 'menu', trigger: 'button[data-state]', triggerText: ['快速', '思考研究'], item: '[role="menuitemcheckbox"]', on: '思考研究', off: '快速' }  // 输入框下方的「快速 ▾」
   },
   {
     id: 'kimi', name: 'Kimi', url: 'https://www.kimi.com/',
