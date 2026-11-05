@@ -82,6 +82,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         for (const w of await getWins()) await chrome.windows.remove(w.windowId).catch(() => {});
         await setWins([]);
         return { ok: true };
+      case 'navWindow': {
+        const w = (await getWins()).find(x => x.paneId === msg.paneId);
+        if (!w) return { ok: false, err: '这一栏没有对应窗口' };
+        await chrome.tabs.update(w.tabId, { url: msg.url });
+        return { ok: true };
+      }
       case 'sendToWindow':
         return sendToWindow(msg.paneId, msg.cmd, msg.noFocus);
       case 'popout': {

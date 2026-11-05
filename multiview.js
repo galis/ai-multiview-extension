@@ -241,7 +241,7 @@ addEventListener('message', ev => {
     const first = !l.ready;
     l.ready = true;
     clearTimeout(l.readyTimer);
-    if (first) setBadge(id, '就绪', 'ok');   // SPA 换页时也会再报一次，别盖掉发送结果
+    if (first) setBadge(id, l.badge.textContent === '开新对话中…' ? '已开新对话' : '就绪', 'ok');   // SPA 换页时也会再报一次，别盖掉发送结果
     const p = state.panes.find(x => x.id === id);
     if (p) applyPane(p, first);
   } else if (ev.data.aimv === 'res') {
@@ -277,6 +277,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function broadcast(send) {
   const text = $('#prompt').value.trim();
   if (!text) return;
+  if (text === '/clear') { $('#prompt').value = ''; return clearAll(); }
   const targets = state.panes.filter(p => p.on);
   const t0 = performance.now();
   log(`${send ? '发送' : '填入'}到 ${targets.length} 栏${send && !state.serial ? '（先填字，再同时发送）' : ''}`);
@@ -307,6 +308,29 @@ async function broadcast(send) {
   if (state.mode === 'window') chrome.runtime.sendMessage({ type: 'focusTab' });
   window.__aimvLast = results;
   return results;
+}
+
+// /clear：勾选的栏全部重新打开该站的「新对话」页面，等于清空聊天上下文（旧对话还在各站的历史记录里）。
+// 重新加载后会自动套用主题和深度思考设置。
+async function clearAll() {
+  const targets = state.panes.filter(p => p.on);
+  log(`/clear：${targets.length} 栏开新对话`);
+  for (const p of targets) {
+    const url = (siteById(p.siteId) || {}).newChat || p.url;
+    if (state.mode === 'window') {
+      const r = await chrome.runtime.sendMessage({ type: 'navWindow', paneId: p.id, url });
+      setBadge(p.id, r && r.ok ? '已开新对话' : (r && r.err) || '失败', r && r.ok ? 'ok' : 'bad');
+      continue;
+    }
+    const l = live.get(p.id);
+    if (!l || !l.iframe) continue;
+    l.ready = false;
+    l.iframe.src = 'about:blank';   // 先清掉，保证即使网址相同也会重新加载
+    await sleep(30);
+    l.iframe.src = url;
+    setBadge(p.id, '开新对话中…');
+    watchReady(p.id);
+  }
 }
 
 // 栏加载好后：套用主题；首次就绪时如果开过「深度思考」也套用
