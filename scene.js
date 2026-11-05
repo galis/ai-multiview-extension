@@ -104,7 +104,14 @@ function wireScene() {
   $('#skipWait').onclick = () => { if (run) { run.skip = true; log('不等了：用现有回答继续'); } };
   $('#stopScene').onclick = () => { if (run) { run.abort = true; run.skip = true; log('停止场景'); } };
   $('#backdrop').onclick = () => openPane(null);
-  addEventListener('keydown', e => { if (e.key === 'Escape' && openId) openPane(null); });
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (openId) openPane(null);
+    else if (state.rec) { setRec(false); save(); }
+  });
+  $('#recMode').onchange = e => { setRec(e.target.checked); save(); };
+  $('#recExit').onclick = () => { setRec(false); save(); };
+  setRec(state.rec || location.hash.includes('rec=1'));
 }
 
 // ---------- 记录区 ----------
@@ -135,21 +142,31 @@ function syncToggle(round) {
   b.hidden = ds.length < 2;
   b.textContent = ds.length && ds.every(d => d.open) ? '全部收起' : '全部展开';
 }
-// 回答默认展开；思考过程单独折叠在回答上面
-function addAnswer(round, name, text, late = '', think = '') {
+// 一条回答 = 一条像微信聊天列表的消息：头像、名字、字数，下面一行灰色预览；点开看全文。默认收起
+function addAnswer(round, p, text, late = '', think = '') {
   const d = document.createElement('details');
-  d.open = true;
+  d.className = 'msg';
   const s = document.createElement('summary');
-  s.textContent = `${name}（${late ? late + '，' : ''}${text ? text.length + ' 字' : '没拿到回答'}）`;
-  if (late) s.classList.add('late');
-  const pre = document.createElement('div');
-  pre.className = 'txt';
-  pre.textContent = text || '';
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const top = document.createElement('div');
+  top.className = 'top';
+  const nm = document.createElement('span');
+  nm.className = 'who' + (late ? ' late' : '');
+  nm.textContent = p.name + (late ? ` · ${late}` : '');
+  const cnt = document.createElement('span');
+  cnt.className = 'cnt';
+  cnt.textContent = text ? text.length + ' 字' : '没拿到回答';
+  top.append(nm, cnt);
+  const pv = document.createElement('div');
+  pv.className = 'preview';
+  pv.textContent = text ? text.replace(/\s+/g, ' ').trim() : '';
+  meta.append(top, pv);
+  s.append(miniFace(p), meta);
   d.append(s);
   if (think) {
     const th = document.createElement('details');
     th.className = 'think';
-    th.open = location.hash.includes('autotest');   // 自动测试时展开，方便截图核对
     const ts = document.createElement('summary');
     ts.textContent = `思考过程（${think.length} 字）`;
     const tt = document.createElement('div');
@@ -158,6 +175,9 @@ function addAnswer(round, name, text, late = '', think = '') {
     th.append(ts, tt);
     d.append(th);
   }
+  const pre = document.createElement('div');
+  pre.className = 'txt';
+  pre.textContent = text || '';
   d.append(pre);
   d.ontoggle = () => syncToggle(round);
   round.appendChild(d);
@@ -186,7 +206,7 @@ async function sendEach(items) {
   });
 }
 
-async function waitReplies(items, marker) {
+async function waitReplies(items, marker, onDone) {
   const st = new Map(items.map(it => [it.p.id, { text: '', changed: Date.now(), done: false }]));
   const t0 = Date.now();
   const cap = timeoutMin() * 60000;   // 这一轮开始时定下，中途改设置下一轮生效
@@ -221,7 +241,9 @@ async function waitReplies(items, marker) {
       }
       if (s.late) setStatus(it.p.id, s.text ? `${s.late} · ${s.text.length} 字` : `${s.late} · 没拿到回答`, 'late');
       else if (s.done) setStatus(it.p.id, s.text ? `答完 · ${s.text.length} 字` : '没拿到回答', s.text ? 'ok' : 'bad');
-      else setStatus(it.p.id, s.text ? `回答中 · ${s.text.length} 字` : (!r ? '无回应' : !r.ok ? '读不到：' + r.err : !r.found ? '找不到刚发的消息' : '思考中…'), 'busy');
+      // 谁先答完谁先出一条消息
+      if (s.done && !s.fired) { s.fired = true; if (s.think) run.think.set(it.p.id, s.think); if (onDone) onDone(it, s); }
+      if (!s.done) setStatus(it.p.id, s.text ? `回答中 · ${s.text.length} 字` : (!r ? '无回应' : !r.ok ? '读不到：' + r.err : !r.found ? '找不到刚发的消息' : '思考中…'), 'busy');
     }));
     if (run.skip) break;
     await sleep(2500);
@@ -234,8 +256,15 @@ async function waitReplies(items, marker) {
 async function roundAsk(title, items, marker) {
   const round = addRound(title);
   const sent = await sendEach(items);
-  const got = run.abort ? new Map() : await waitReplies(sent, marker);
-  for (const it of items) addAnswer(round, it.p.name, got.get(it.p.id) || '', run.timedOut.get(it.p.id) || '', run.think.get(it.p.id) || '');
+  const shown = new Set();
+  const post = (it, text) => {
+    if (shown.has(it.p.id)) return;
+    shown.add(it.p.id);
+    addAnswer(round, it.p, text || '', run.timedOut.get(it.p.id) || '', run.think.get(it.p.id) || '');
+  };
+  const got = run.abort ? new Map() : await waitReplies(sent, marker, (it, st) => post(it, st.text));
+  // 没发出去、被跳过的也补一条，排在最后
+  for (const it of items) post(it, got.get(it.p.id));
   return got;
 }
 
@@ -287,6 +316,7 @@ async function brainstorm(q, main, players) {
     }));
     r2 = await roundAsk('第 2 轮 · 互相讨论', items, mk2);
     if (run.abort) return;
+    showClash(got1, r2);
   }
   // 主 AI 自己参加了的话，它的发言已经在它的对话里，不用再贴
   const views = players.filter(p => p.id !== main.id).map(p => [p, r2.get(p.id) || r1.get(p.id)]).filter(([, t]) => t);
@@ -325,6 +355,84 @@ async function contest(q, main, players) {
     log(`冠军：${win.name}`);
   }
   showFinal(win ? `🏆 冠军：${win.name}（选手${m[1]}）` : `${main.name} 的裁定`, (verdict || '没拿到裁定') + '\n\n——\n' + map);
+}
+
+// ---------- 互怼气泡：第 2 轮里点名别人的那句话 ----------
+const ALIAS = {
+  claude: ['Claude'], chatgpt: ['ChatGPT', 'GPT'], gemini: ['Gemini'], deepseek: ['DeepSeek', '深度求索'],
+  doubao: ['豆包'], qwen: ['千问', '通义'], kimi: ['Kimi'], yuanbao: ['元宝']
+};
+// 先认反对（「不同意」也含「同意」），再认同意，最后才是补充（「但」太常见）
+const STANCE = [
+  ['反对', '⚔️', /不同意|反对|不认同|不赞同|质疑|不太同意|不完全同意|有问题|站不住|过于|太理想|忽略了|反驳/],
+  ['同意', '🤝', /同意|赞同|认同|说得对|支持/],
+  ['补充', '➕', /补充|还要|还应|另外|此外|但|不过|可以再/]
+];
+const namesOf = p => ALIAS[p.siteId] || [p.name];
+function clashLines(speakers, texts) {
+  const out = [];
+  for (const p of speakers) {
+    const t = (texts.get(p.id) || '').replace(/\*\*|__|`/g, '');
+    const sents = t.split(/(?<=[。！？!?；;])|\n/).map(x => x.replace(/^[\s\-*•\d.、)）]+/, '').trim()).filter(x => x.length >= 6);
+    const found = [];
+    for (const s of sents) {
+      // 指向句子里最先出现的那个名字
+      const low = s.toLowerCase();
+      const pos = o => Math.min(...namesOf(o).map(n => { const k = low.indexOf(n.toLowerCase()); return k < 0 ? 1e9 : k; }));
+      const to = speakers.filter(o => o !== p && pos(o) < 1e9).sort((a, b) => pos(a) - pos(b))[0];
+      if (!to) continue;
+      const st = STANCE.find(([, , re]) => re.test(s)) || ['点名', '💬'];
+      found.push({ from: p, to, kind: st[0], icon: st[1], text: s.length > 56 ? s.slice(0, 54) + '…' : s, rank: ['反对', '补充', '点名', '同意'].indexOf(st[0]) });
+    }
+    found.sort((a, b) => a.rank - b.rank);
+    // 每个 AI 最多两句；有反对的先上
+    out.push(...found.slice(0, found[0] && found[0].kind === '反对' ? 2 : 1));
+  }
+  return out.sort((a, b) => a.rank - b.rank).slice(0, 10);
+}
+function miniFace(p) {
+  const [t, c] = AVATAR[p.siteId] || [p.name.slice(0, 2), '#64748b'];
+  const f = document.createElement('span');
+  f.className = 'mini';
+  f.textContent = t;
+  f.style.background = c;
+  f.title = p.name;
+  return f;
+}
+function showClash(speakers, texts) {
+  const lines = clashLines(speakers, texts);
+  if (!lines.length) return;
+  const d = document.createElement('div');
+  d.className = 'clash';
+  const h = document.createElement('h3');
+  h.textContent = `第 2 轮 · 谁怼了谁（${lines.filter(l => l.kind === '反对').length} 处反对）`;
+  d.appendChild(h);
+  lines.forEach((l, i) => {
+    const row = document.createElement('div');
+    row.className = 'bubble k-' + l.kind;
+    row.style.animationDelay = (i * 0.6) + 's';
+    const who = document.createElement('div');
+    who.className = 'who';
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = l.icon;
+    arrow.title = l.kind;
+    who.append(miniFace(l.from), arrow, miniFace(l.to));
+    const q = document.createElement('div');
+    q.className = 'say';
+    q.textContent = `${l.from.name} → ${l.to.name}：「${l.text}」`;
+    row.append(who, q);
+    d.appendChild(row);
+  });
+  $('#rounds').appendChild(d);
+  d.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// ---------- 录屏模式：竖屏 9:16，只留头像板和记录，字放大 ----------
+function setRec(on) {
+  state.rec = !!on;
+  document.documentElement.classList.toggle('rec', state.rec);
+  $('#recMode').checked = state.rec;
 }
 
 function showFinal(title, text) {

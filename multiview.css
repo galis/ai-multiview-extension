@@ -106,3 +106,64 @@ body.scene .pane .remove, body.scene .pane .on { display: none; }
 .round details.think > summary { font-size: 12px; }
 .txt { white-space: pre-wrap; padding: 6px 0 2px; line-height: 1.6; }
 .final { background: var(--panel); border: 2px solid #eab308; border-radius: 8px; padding: 10px 14px; }
+
+/* ---------- 第 2 轮互怼气泡 ---------- */
+.clash { background: var(--panel); border: 2px solid var(--bad); border-radius: 8px; padding: 8px 12px; }
+.clash h3 { margin: 0 0 6px; font-size: 13px; }
+.bubble { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line);
+  opacity: 0; animation: aimvPop .45s ease-out forwards; }
+.bubble .who { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.bubble .arrow { font-size: 16px; }
+.mini { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.bubble .say { background: var(--bg); border-radius: 12px; padding: 6px 10px; line-height: 1.5; border-left: 3px solid var(--line); }
+.bubble.k-反对 .say { border-left-color: var(--bad); }
+.bubble.k-补充 .say { border-left-color: var(--accent); }
+.bubble.k-同意 .say { border-left-color: var(--ok); }
+@keyframes aimvPop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/* ---------- 录屏模式：竖屏 9:16，宽度 = 屏幕高度的 9/16，尺寸都按这个宽度放大 ---------- */
+#recExit { display: none; }
+html.rec { --W: min(100vw, 56.25vh); }
+html.rec body { background: #000; }
+html.rec #recExit { display: block; position: fixed; top: 8px; right: 8px; z-index: 40; opacity: .55; }
+html.rec body.scene #toolbar, html.rec body.scene .board-ctl, html.rec body.scene #log, html.rec body.scene #fillAll { display: none; }
+html.rec body.scene #board, html.rec body.scene #composer { width: var(--W); align-self: center; box-sizing: border-box; background: var(--bg); }
+html.rec body.scene #board { padding: calc(var(--W) * .05) calc(var(--W) * .04) calc(var(--W) * .02); gap: calc(var(--W) * .03); }
+html.rec body.scene #composer { padding: calc(var(--W) * .02) calc(var(--W) * .04) calc(var(--W) * .04); }
+html.rec body.scene #prompt { font-size: calc(var(--W) * .032); }
+html.rec body.scene #sendAll { font-size: calc(var(--W) * .032); padding: .4em 1em; }
+html.rec #avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--W) * .035) calc(var(--W) * .02); }
+html.rec .av { width: auto; gap: calc(var(--W) * .008); }
+html.rec .av .face { width: calc(var(--W) * .17); height: calc(var(--W) * .17); font-size: calc(var(--W) * .05); outline-width: calc(var(--W) * .008); }
+html.rec .av .nm { font-size: calc(var(--W) * .034); }
+html.rec .av .st { font-size: calc(var(--W) * .027); max-width: none; }
+html.rec .av .role { font-size: calc(var(--W) * .027); min-height: 0; }
+html.rec .av .join { display: none; }
+html.rec #rounds { max-width: none; font-size: calc(var(--W) * .03); gap: calc(var(--W) * .025); }
+html.rec #rounds .question { font-size: calc(var(--W) * .038); }
+html.rec .round h3, html.rec .final h3, html.rec .clash h3 { font-size: calc(var(--W) * .036); }
+html.rec .round .toggle-all { font-size: calc(var(--W) * .026); }
+html.rec .bubble { gap: calc(var(--W) * .02); padding: calc(var(--W) * .015) 0; }
+html.rec .bubble .say { font-size: calc(var(--W) * .034); }
+html.rec .bubble .arrow { font-size: calc(var(--W) * .04); }
+html.rec .mini { width: calc(var(--W) * .075); height: calc(var(--W) * .075); font-size: calc(var(--W) * .024); }
+html.rec body.scene .pane { width: calc(var(--W) - 16px); }
+
+/* ---------- 回答：微信聊天列表式的消息，默认收起 ---------- */
+.round details.msg { border-top: 1px solid var(--line); padding: 6px 0; animation: aimvPop .35s ease-out; }
+.round details.msg > summary { list-style: none; display: flex; align-items: center; gap: 10px; }
+.round details.msg > summary::-webkit-details-marker { display: none; }
+.msg > summary .mini { width: 36px; height: 36px; font-size: 12px; }
+.msg .meta { flex: 1; min-width: 0; }
+.msg .top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.msg .top .who.late { color: var(--warn); }
+.msg .cnt { font-weight: normal; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.msg .preview { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.msg[open] .preview { display: none; }
+.msg > .txt, .msg > details.think { margin-left: 46px; }
+html.rec .msg > summary .mini { width: calc(var(--W) * .09); height: calc(var(--W) * .09); font-size: calc(var(--W) * .028); }
+html.rec .msg .top { font-size: calc(var(--W) * .034); }
+html.rec .msg .cnt { font-size: calc(var(--W) * .025); }
+html.rec .msg .preview { font-size: calc(var(--W) * .028); }
+html.rec .msg > .txt, html.rec .msg > details.think { margin-left: calc(var(--W) * .11); }
