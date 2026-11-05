@@ -59,11 +59,11 @@ async function tileWindows(panes, area) {
   return wins;
 }
 
-async function sendToWindow(paneId, msg) {
+async function sendToWindow(paneId, msg, noFocus) {
   const w = (await getWins()).find(x => x.paneId === paneId);
   if (!w) return { ok: false, err: '这一栏没有对应窗口（先点"平铺成窗口"）' };
   try {
-    await chrome.windows.update(w.windowId, { focused: true });
+    if (!noFocus) await chrome.windows.update(w.windowId, { focused: true });
     return await chrome.tabs.sendMessage(w.tabId, msg, { frameId: 0 });
   } catch (e) {
     return { ok: false, err: '窗口不在或页面还没加载好：' + e.message };
@@ -83,7 +83,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await setWins([]);
         return { ok: true };
       case 'sendToWindow':
-        return sendToWindow(msg.paneId, msg.cmd);
+        return sendToWindow(msg.paneId, msg.cmd, msg.noFocus);
       case 'popout': {
         const w = await chrome.windows.create({ url: PAGE + '#' + msg.hash, focused: true, state: 'maximized' });
         if (sender.tab) chrome.tabs.remove(sender.tab.id).catch(() => {});

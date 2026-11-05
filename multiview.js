@@ -65,6 +65,7 @@ function render() {
   $('#mode').value = state.mode;
   $('#lazy').checked = state.lazy;
   $('#think').checked = !!state.think;
+  $('#serial').checked = !!state.serial;
 
   const host = $('#panes');
   if (state.layout === 'grid') {
@@ -249,7 +250,7 @@ addEventListener('message', ev => {
   }
 });
 
-function askFrame(id, cmd, timeout = 12000) {
+function askFrame(id, cmd, timeout = 12000, noFocus = false) {
   const l = live.get(id);
   if (!l || !l.iframe) return Promise.resolve({ ok: false, err: '没加载' });
   if (!l.ready) return Promise.resolve({ ok: false, err: '页面没就绪（未登录 / 被拦 / 验证页）' });
@@ -257,33 +258,52 @@ function askFrame(id, cmd, timeout = 12000) {
   return new Promise(resolve => {
     pending.set(reqId, resolve);
     setTimeout(() => { if (pending.delete(reqId)) resolve({ ok: false, err: '超时没回应' }); }, timeout);
-    if (cmd.cmd !== 'theme') l.iframe.focus();
+    if (!noFocus && cmd.cmd !== 'theme') l.iframe.focus();
     l.iframe.contentWindow.postMessage({ aimv: 'cmd', reqId, ...cmd }, '*');
   });
 }
 
-async function ask(id, cmd) {
-  if (state.mode === 'window') return chrome.runtime.sendMessage({ type: 'sendToWindow', paneId: id, cmd: { aimv: 'cmd', ...cmd } });
-  return askFrame(id, cmd);
+async function ask(id, cmd, noFocus) {
+  if (state.mode === 'window') return chrome.runtime.sendMessage({ type: 'sendToWindow', paneId: id, cmd: { aimv: 'cmd', ...cmd }, noFocus });
+  return askFrame(id, cmd, 12000, noFocus);
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// 广播分两步：
+//  1) 依次填字：往输入框插字要焦点在那个框里，一次只能一个框有焦点，所以只能一个个来（每栏约 0.3 秒）；
+//  2) 同时点发送：点按钮不需要焦点，所有栏一起点，几乎同一时刻发出去。
+// 「依次发送」打勾时退回老办法：每栏填完立刻发，发完再下一栏。
 async function broadcast(send) {
   const text = $('#prompt').value.trim();
   if (!text) return;
   const targets = state.panes.filter(p => p.on);
-  log(`${send ? '发送' : '填入'}到 ${targets.length} 栏`);
+  const t0 = performance.now();
+  log(`${send ? '发送' : '填入'}到 ${targets.length} 栏${send && !state.serial ? '（先填字，再同时发送）' : ''}`);
   const results = {};
-  for (const p of targets) {
-    setBadge(p.id, send ? '发送中…' : '填写中…', '');
-    const r = await ask(p.id, { cmd: 'fill', text, send }) || { ok: false, err: '无回应' };
+  const report = (p, r) => {
     results[p.name] = r;
-    if (r.ok) setBadge(p.id, send ? '已发送' : '已填入', 'ok');
+    if (r.ok) setBadge(p.id, r.step === 'sent' ? '已发送' : '已填入', 'ok');
     else setBadge(p.id, r.err || '失败', r.step === 'not-sent' ? 'warn' : 'bad');
     log(`${p.name}: ${r.ok ? (r.step + ' / ' + (r.how || '') + ' / ' + (r.via || '')) : r.err}`);
-    await sleep(400);
+  };
+  const serial = !send || state.serial;
+  const filled = [];
+  for (const p of targets) {
+    setBadge(p.id, serial && send ? '发送中…' : '填写中…', '');
+    const r = await ask(p.id, { cmd: 'fill', text, send: serial && send }) || { ok: false, err: '无回应' };
+    if (serial || !r.ok) report(p, r);
+    else { filled.push(p); setBadge(p.id, '已填好，等发送', ''); }
+    await sleep(serial ? 400 : 80);
   }
+  if (!serial && filled.length) {
+    const tFill = performance.now();
+    filled.forEach(p => setBadge(p.id, '发送中…', ''));
+    const rs = await Promise.all(filled.map(p => ask(p.id, { cmd: 'send', text }, true)));
+    rs.forEach((r, i) => report(filled[i], r || { ok: false, err: '无回应' }));
+    const ats = rs.filter(r => r && r.at).map(r => r.at);
+    log(`填字 ${((tFill - t0) / 1000).toFixed(1)} 秒，发送 ${((performance.now() - tFill) / 1000).toFixed(1)} 秒${ats.length > 1 ? `，各栏发出时间相差 ${((Math.max(...ats) - Math.min(...ats)) / 1000).toFixed(1)} 秒` : ''}`);
+  } else log(`用时 ${((performance.now() - t0) / 1000).toFixed(1)} 秒`);
   if (state.mode === 'window') chrome.runtime.sendMessage({ type: 'focusTab' });
   window.__aimvLast = results;
   return results;
@@ -349,6 +369,7 @@ function wireToolbar() {
     state.panes.forEach(p => applyPane(p, false));
   };
   mql.addEventListener('change', () => { if (!state.theme || state.theme === 'system') { applyTheme(); state.panes.forEach(p => applyPane(p, false)); } });
+  $('#serial').onchange = e => { state.serial = e.target.checked; save(); };
   $('#lazy').onchange = e => { state.lazy = e.target.checked; save(); };
   $('#reset').onclick = () => { if (confirm('恢复默认的 8 个站？当前布局会丢掉。')) { state = defaults(); resetPanes(); save(); render(); } };
   $('#diagnose').onclick = diagnose;

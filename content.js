@@ -107,25 +107,34 @@
 
   async function fill(text, doSend) {
     const c = cfg();
-    const key = norm(text).slice(0, 20);
     const inp = await waitFor(() => queryFirst(c.input), 4000);
     if (!inp) return { ok: false, err: '没找到输入框（可能未登录或页面改版）' };
     const how = await setText(inp.el, text, c.site && c.site.fill);
     if (!how) return { ok: false, err: '输入框找到了但填不进字', input: inp.sel };
-    await sleep(300);
+    await sleep(150);
     if (!doSend) return { ok: true, step: 'filled', how, input: inp.sel };
+    return { ...(await sendNow(text)), how };
+  }
+
+  // 点发送（不需要焦点，所以各栏可以同时点）。前提：字已经填好。
+  async function sendNow(text) {
+    const c = cfg();
+    const key = norm(text).slice(0, 20);
+    const inp = queryFirst(c.input);
+    if (!inp) return { ok: false, err: '没找到输入框' };
+    if (!norm(textOf(inp.el)).includes(key)) return { ok: false, err: '输入框里没有要发的字（填字那一步失败了）' };
     const btn = await waitFor(() => queryFirst(c.send, enabled), 3000);
     if (btn) btn.el.click();
-    else { inp.el.focus(); pressEnter(inp.el); }
+    else pressEnter(inp.el);
     // 发出去的标志：输入框清空（输入框可能被换成新元素，所以重新找）
     const cleared = await waitFor(() => {
       const cur = queryFirst(c.input);
       return !cur || !norm(textOf(cur.el)).includes(key);
-    }, 3000);
+    }, 4000);
     // 只在没找到按钮时才按回车；点过按钮就不再补回车，免得发两次
     return {
-      ok: !!cleared, step: cleared ? 'sent' : 'not-sent', how, via: btn ? 'button' : 'enter',
-      input: inp.sel, send: btn ? btn.sel : null,
+      ok: !!cleared, step: cleared ? 'sent' : 'not-sent', via: btn ? 'button' : 'enter',
+      input: inp.sel, send: btn ? btn.sel : null, at: Date.now(),
       err: cleared ? undefined : (btn ? '点了发送，但输入框没清空，可能要登录或被拦' : '没找到可点的发送按钮，按回车也没发出去')
     };
   }
@@ -231,6 +240,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     if (msg.cmd === 'think') return think(!!msg.on);
     if (msg.cmd === 'theme') return theme(msg.target, msg.mode);
     if (msg.cmd === 'fill') return fill(msg.text, !!msg.send);
+    if (msg.cmd === 'send') return sendNow(msg.text);
     return { ok: false, err: 'unknown cmd' };
   }
 
