@@ -51,6 +51,7 @@
     <div id="avatars"></div>
     <div class="board-ctl">
       <label><span id="mainLabel">主 AI</span> <select id="judge"></select></label>
+      <label title="一轮里某个 AI 超过这么久还没答完，就不再等它：有字就用已有的字，没字就跳过">超时 <input id="timeoutMin" type="number" min="1" max="60" step="1" value="5"> 分钟</label>
       <button id="skipWait" title="有的栏一直不算答完时，用各栏现有的回答进入下一步">不等了，继续</button>
       <button id="stopScene">停止</button>
       <span id="sceneHint"></span>

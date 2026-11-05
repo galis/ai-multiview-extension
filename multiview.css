@@ -80,6 +80,10 @@ body.scene .pane .remove, body.scene .pane .on { display: none; }
 .av[data-state="busy"] .face { outline-color: var(--accent); animation: aimvPulse 1.2s ease-in-out infinite; }
 .av[data-state="ok"] .face { outline-color: var(--ok); }
 .av[data-state="bad"] .face { outline-color: var(--bad); }
+.av[data-state="late"] .face { outline-color: var(--warn); }
+.av[data-state="late"] .st { color: var(--warn); }
+.round summary.late { color: var(--warn); }
+#timeoutMin { width: 3.5em; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
 .av[data-state="win"] .face { outline-color: #eab308; outline-width: 5px; }
 @keyframes aimvPulse { 50% { outline-offset: 4px; } }
 .av .nm { font-weight: 600; font-size: 12px; }
