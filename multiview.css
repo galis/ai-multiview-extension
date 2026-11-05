@@ -93,6 +93,9 @@ body.scene .pane .remove, body.scene .pane .on { display: none; }
 #rounds .question { font-weight: 600; font-size: 14px; }
 .round { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .round h3, .final h3 { margin: 0 0 6px; font-size: 13px; }
+.round h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.round .toggle-all { font-size: 12px; font-weight: normal; padding: 1px 8px; }
+.round .toggle-all[hidden] { display: none; }
 .round details { border-top: 1px solid var(--line); padding: 4px 0; }
 .round summary { cursor: pointer; }
 .txt { white-space: pre-wrap; padding: 6px 0 2px; line-height: 1.6; }

@@ -108,10 +108,28 @@ function addRound(title) {
   const r = document.createElement('div');
   r.className = 'round';
   const h = document.createElement('h3');
-  h.textContent = title;
+  const t = document.createElement('span');
+  t.textContent = title;
+  // 一键全部展开 / 全部收起；有 2 份以上回答才显示
+  const b = document.createElement('button');
+  b.className = 'toggle-all';
+  b.hidden = true;
+  b.onclick = () => {
+    const ds = [...r.querySelectorAll('details')];
+    const open = !ds.every(d => d.open);
+    ds.forEach(d => { d.open = open; });
+    syncToggle(r);
+  };
+  h.append(t, b);
   r.appendChild(h);
   $('#rounds').appendChild(r);
   return r;
+}
+function syncToggle(round) {
+  const b = round.querySelector('.toggle-all');
+  const ds = [...round.querySelectorAll('details')];
+  b.hidden = ds.length < 2;
+  b.textContent = ds.length && ds.every(d => d.open) ? '全部收起' : '全部展开';
 }
 function addAnswer(round, name, text, open = false) {
   const d = document.createElement('details');
@@ -122,7 +140,9 @@ function addAnswer(round, name, text, open = false) {
   pre.className = 'txt';
   pre.textContent = text || '';
   d.append(s, pre);
+  d.ontoggle = () => syncToggle(round);
   round.appendChild(d);
+  syncToggle(round);
   round.scrollIntoView({ block: 'end', behavior: 'smooth' });
 }
 
