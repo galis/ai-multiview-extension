@@ -292,7 +292,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     return out;
   }
   // 被限制（发太频繁、次数用完）：提示多半是几秒就消失的弹窗，所以一直盯着页面新冒出来的字，记下最近一次
-  const LIMIT_RE = /(请求|操作|访问|发送|提问|消息|对话).{0,4}(过于|太过|太|较为)频繁|频率(过高|超限|限制)|(次数|额度|配额|用量)(已)?(用完|用尽|耗尽|不足|达到上限|已达上限)|(已|达到|超出|超过)(了)?(今日|今天|本日|当前)?.{0,6}(上限|限额)|稍后再(试|来|问)|休息一下再|服务(繁忙|拥挤)|当前(使用|访问)?人数(过多|较多)|rate.?limit|too many (requests|messages)|usage limit|limit reached|reached (your|the) .{0,20}limit|try again later/i;
+  const LIMIT_RE = /(请求|操作|访问|发送|提问|消息|对话).{0,4}(过于|太过|太|较为)频繁|频率(过高|超限|限制)|(次数|额度|配额|用量)(已)?(用完|用尽|耗尽|不足|达到上限|已达上限)|(已|达到|超出|超过)(了)?(今日|今天|本日|当前)?.{0,6}(上限|限额)|稍后再(试|来|问)|休息一下再|服务(繁忙|拥挤)|(人数|用户|人)(太|过|较)多|太多人|优先队列|排队(中|人数)|当前(使用|访问)?人数(过多|较多)|rate.?limit|too many (requests|messages)|usage limit|limit reached|reached (your|the) .{0,20}limit|try again later/i;
   let limitHit = null;     // { text, t }
   let sentAt = 0;
   // 只认浮层里的提示（弹窗、toast、固定定位的条），不看聊天正文，免得回答里写了「上限」被当成限制
@@ -303,7 +303,8 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
   };
   const limitText = el => {
     const t = (el.innerText || el.textContent || '').trim();
-    return t && t.length < 160 && LIMIT_RE.test(t) && inOverlay(el) ? t : '';
+    if (!t || t.length > 160 || !LIMIT_RE.test(t) || !inOverlay(el)) return '';
+    return t.split('\n').find(l => LIMIT_RE.test(l)) || t;   // 取命中的那一行，不要弹窗标题「提示」
   };
   new MutationObserver(ms => {
     if (!sentAt) return;
@@ -311,7 +312,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
       const el = n.nodeType === 1 ? n : n.parentElement;
       if (!el || el.closest('textarea,[contenteditable="true"]')) continue;
       const t = limitText(el);
-      if (t) limitHit = { text: t.split('\n')[0].slice(0, 60), t: Date.now() };
+      if (t) limitHit = { text: t.slice(0, 60), t: Date.now() };
     }
   }).observe(document.documentElement, { childList: true, subtree: true, characterData: false });
   // 还挂在页面上的提示（弹窗、toast）
@@ -319,7 +320,7 @@ img,video,canvas,picture,svg image,[style*="background-image"]{filter:invert(1) 
     for (const el of document.querySelectorAll('[role="alert"],[role="alertdialog"],[role="dialog"],[role="status"],[class*="toast"],[class*="Toast"],[class*="notice"],[class*="Notice"],[class*="modal"],[class*="Modal"]')) {
       if (!visible(el) || el.closest('textarea,[contenteditable="true"]')) continue;
       const t = limitText(el);
-      if (t) return t.split('\n')[0].slice(0, 60);
+      if (t) return t.slice(0, 60);
     }
     return limitHit && limitHit.t >= sentAt ? limitHit.text : '';
   }
